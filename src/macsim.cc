@@ -172,7 +172,8 @@ void macsim_c::register_functions(void) {
   mem_factory_c::get()->register_class("l2_decoupled_network", default_mem);
   mem_factory_c::get()->register_class("l2_decoupled_local", default_mem);
   mem_factory_c::get()->register_class("igpu_network", default_mem);
-
+  mem_factory_c::get()->register_class("pim_network", default_mem);
+  
   dram_factory_c::get()->register_class("FCFS", fcfs_controller);
   dram_factory_c::get()->register_class("FRFCFS", frfcfs_controller);
   dram_factory_c::get()->register_class("SIMPLE", simple_controller);
@@ -1007,6 +1008,8 @@ int macsim_c::run_a_cycle() {
 
   // increase simulation cycle
   m_simulation_cycle++;
+  //++Sahith
+  //cout<<"Simulation Cycle: "<<m_simulation_cycle<<endl;
   STAT_EVENT(CYC_COUNT_TOT);
 
   // m_termination_check[0] cpu [1] gpu

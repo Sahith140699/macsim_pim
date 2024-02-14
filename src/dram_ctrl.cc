@@ -167,8 +167,16 @@ dram_ctrl_c::dram_ctrl_c(macsim_c* simBase) : dram_c(simBase) {
   m_data_avail = new Counter[m_num_bank];
   m_bank_ready = new Counter[m_num_bank];
   m_bank_timestamp = new Counter[m_num_bank];
+  //++Sahith
+  m_rowhammer_counter = new vector<map<uint64_t,Counter>*>[m_num_bank];
+  m_rowhammer_refresh = 1000000;//(*KNOB(KNOB_RH_REFRESH)) * (*KNOB(KNOB_CLOCK_MC) * 1e9);
+
+  //++Sahith
+  //cout<<"DRAM BUFFER SIZE: "<<*KNOB(KNOB_DRAM_BUFFER_SIZE)<<endl;
 
   for (int ii = 0; ii < m_num_bank; ++ii) {
+    //++Sahith
+    m_rowhammer_counter->push_back(new map<uint64_t, Counter>);
     for (int jj = 0; jj < *KNOB(KNOB_DRAM_BUFFER_SIZE); ++jj) {
       drb_entry_s* new_entry = new drb_entry_s(m_simBase);
       m_buffer_free_list[ii].push_back(new_entry);
@@ -251,6 +259,8 @@ dram_ctrl_c::~dram_ctrl_c() {
   delete[] m_bank_timestamp;
   delete m_output_buffer;
   delete m_tmp_output_buffer;
+  //++Sahith
+  delete[] m_rowhammer_counter;
 }
 
 // initialize dram controller
@@ -279,11 +289,14 @@ bool dram_ctrl_c::insert_new_req(mem_req_s* mem_req) {
     bid_xor = (addr >> m_bid_xor_shift) & m_bid_mask;
     cid = addr & m_cid_mask;
     addr = (addr >> m_bid_shift) / num_mc;
-
     bid = addr & m_bid_mask;
     addr = addr >> m_rid_shift;
     rid = addr;
   }
+
+  //++Sahith
+  cout<<"Addr: "<<mem_req->m_addr<<" Bid XOR: "<<bid_xor<<" Bank Shift: "<<m_bid_shift<<" Bank Mask: "<<m_bid_mask<<" BankID - "<<bid<<" Row Shift: "<<m_rid_shift<<" RowID - "<<rid<<" cid Mask: "<<m_cid_mask<<" cid: "<<cid<<endl;
+
 
   ASSERTM(rid >= 0, "addr:0x%llx cid:%llu bid:%llu rid:%llu type:%s\n", addr,
           cid, bid, rid, mem_req_c::mem_req_type_name[mem_req->m_type]);
@@ -305,6 +318,29 @@ bool dram_ctrl_c::insert_new_req(mem_req_s* mem_req) {
   // insert a new request to DRB
   insert_req_in_drb(mem_req, bid, rid, cid);
   on_insert(mem_req, bid, rid, cid);
+
+  //////////////////////////////////////////////////////
+  //++Sahith
+  map<uint64_t,Counter>::iterator it;
+  it = (*m_rowhammer_counter)[bid]->find(rid);
+  if(it != (*m_rowhammer_counter)[bid]->end())
+  {
+    //Mitigation - read the adjacent rows and make the present row value 0
+    if(it->second == *KNOB(KNOB_RH_THRESHOLD))
+    {
+      it->second = 0;
+      cout<<"Row Hammer Threshold ###########################################################################"<<endl;
+      //Generate a request to the adjacent rows
+    }
+    else
+    {
+      it->second++;
+    }
+  }
+  else 
+    (*m_rowhammer_counter)[bid]->operator[](rid) = 0;
+  cout<<"Addr: "<<mem_req->m_addr<<" RH: BankID - "<<bid<<" RowID - "<<rid<<" Count - "<<(*m_rowhammer_counter)[bid]->operator[](rid)<<endl;
+  //////////////////////////////////////////////////////
 
   STAT_EVENT(TOTAL_DRAM);
 
@@ -374,6 +410,17 @@ void dram_ctrl_c::run_a_cycle(bool pll_lock) {
     }
   }
   on_run_a_cycle();
+
+  //++Sahith
+  if(m_cycle%m_rowhammer_refresh == 0)
+  {
+    //Refresh the Row Conters in every bank
+    for (int ii = 0; ii < m_num_bank; ++ii) {
+      (*m_rowhammer_counter)[ii]->clear();
+    }
+    cout<<"Cycle: "<<m_cycle<<" rowhammer_refresh: "<<m_rowhammer_refresh<<endl;
+    cout<<"##########################################################################################################################"<<endl;
+  }
 
   ++m_cycle;
 }

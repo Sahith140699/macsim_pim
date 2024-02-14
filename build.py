@@ -72,7 +72,7 @@ def main():
 
 
   ## Prepare scons command
-  cmd = 'scons '
+  cmd = 'python3 $(which scons) '
 
   ## Main build options (opt, dbg, gpf)
   if options.debug:

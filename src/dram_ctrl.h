@@ -38,6 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #define DRAM_CTRL_H
 
 #include <list>
+#include <map>
 #include <fstream>
 
 #include "macsim.h"
@@ -77,6 +78,8 @@ typedef struct drb_entry_s {
   Counter m_timestamp; /**< last touched cycle */
   Counter m_scheduled; /**< scheduled cycle */
   macsim_c* m_simBase; /**< macsim_c base class for simulation globals */
+  //++Sahith
+  //map<uint64_t,int> m_rowhammer_counter;
   // m_type;
   // m_core_type;
 
@@ -258,6 +261,9 @@ protected:
   uint64_t m_bid_shift; /**< bank id shift */
   uint64_t m_rid_shift; /**< row id shift */
   uint64_t m_bid_xor_shift; /**< bank id xor factor */
+  //++Sahith
+  vector<map<uint64_t,Counter>*>* m_rowhammer_counter;
+  uint64_t m_rowhammer_refresh;
 
   int
     m_num_completed_in_last_cycle; /**< number of requests completed in last cycle */
