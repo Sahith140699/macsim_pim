@@ -164,6 +164,8 @@ memory_c* default_mem(macsim_c* m_simBase) {
     new_mem = new l2_decoupled_local_c(m_simBase);
   } else if (policy == "igpu_network") {
     new_mem = new igpu_network_c(m_simBase);
+  } else if (policy == "pim_network") {
+    new_mem = new pim_network_c(m_simBase); 
   } else {
     ASSERT(0);
   }
@@ -2335,7 +2337,28 @@ llc_decoupled_network_c::~llc_decoupled_network_c() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////
-
+//++anurag                                                                                                             
+pim_network_c::pim_network_c(macsim_c* simBase)                                                                        
+  : memory_c(simBase) {                                                                                                
+  // NEXT_ID, PREV_ID, DONE, COUPLE_UP, COUPLE_DOWN, DISABLE, HAS_ROUTER                                               
+  for (int ii = 0; ii < m_num_core; ++ii) {                                                                            
+    m_l1_cache[ii]->init(ii, -1, false, false, true, true, false);                                                     
+    m_l2_cache[ii]->init(-1, ii, true, true, false, true, true);                                                       
+  }                                                                                                                    
+                                                                                                                       
+  for (int ii = 0; ii < m_num_l3; ++ii)                                                                                
+    m_l3_cache[ii]->init(-1, -1, false, false, false, true, true);                                                     
+                                                                                                                       
+  for (int ii = 0; ii < m_num_llc; ++ii)                                                                               
+    m_llc_cache[ii]->init(-1, -1, false, false, false, true, true);                                                    
+                                                                                                                       
+  NETWORK->init(m_num_cpu, m_num_gpu, m_num_l3, m_num_llc, m_num_mc);                                                  
+}                                                                                                                      
+                                                                                                                       
+pim_network_c::~pim_network_c() {                                                                                      
+}                                                                                                                      
+                                                                                                                       
+///////////////////////////////////////////////////////////////////////////////////////////////
 // FIXME
 l2_coupled_local_c::l2_coupled_local_c(macsim_c* simBase) : memory_c(simBase) {
   ASSERT(m_num_core == m_num_llc);

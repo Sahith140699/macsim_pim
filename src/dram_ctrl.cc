@@ -167,8 +167,26 @@ dram_ctrl_c::dram_ctrl_c(macsim_c* simBase) : dram_c(simBase) {
   m_data_avail = new Counter[m_num_bank];
   m_bank_ready = new Counter[m_num_bank];
   m_bank_timestamp = new Counter[m_num_bank];
+  //++Sahith                                                                                                           
+  m_rowhammer_counter = new vector<map<uint64_t,Counter>*>[m_num_bank];                                                
+  m_rowhammer_refresh = (*KNOB(KNOB_RH_REFRESH)) * (*KNOB(KNOB_CLOCK_MC) * 1e9); //1000000                             
+  m_rowhammer_hotrows = new vector<set<Addr>*>[m_num_bank];                                                            
+  m_rowhammer_hotrows_refresh = new vector<set<Addr>*>[m_num_bank];                                                    
+  m_total_rowhammer_hotrows = 0;                                                                                       
+  m_avg_rowhammer_hotrows = 0;                                                                                         
+  m_num_rowhammer_refresh = 0;                                                                                         
+                                                                                                                       
+  //++Sahith                                                                                                         
+  STAT_EVENT_N(RH_REFRESH, m_rowhammer_refresh);
+  //STAT_EVENT_N(RH_TOT_MITIGATION, 1000);
+  //STAT_EVENT_N(RH_TOT_HOT_ROWS, 256);
+  //STAT_EVENT_N(RH_REFRESH_INTERVALS, 4);
 
-  for (int ii = 0; ii < m_num_bank; ++ii) {
+  for (int ii = 0; ii < m_num_bank; ++ii) {    
+    //++Sahith                                                                                                         
+    m_rowhammer_counter->push_back(new map<uint64_t, Counter>);                                                        
+    m_rowhammer_hotrows->push_back(new set<Addr>);                                                                     
+    m_rowhammer_hotrows_refresh->push_back(new set<Addr>);
     for (int jj = 0; jj < *KNOB(KNOB_DRAM_BUFFER_SIZE); ++jj) {
       drb_entry_s* new_entry = new drb_entry_s(m_simBase);
       m_buffer_free_list[ii].push_back(new_entry);
@@ -251,6 +269,10 @@ dram_ctrl_c::~dram_ctrl_c() {
   delete[] m_bank_timestamp;
   delete m_output_buffer;
   delete m_tmp_output_buffer;
+  //++Sahith                                                                                                          
+  delete[] m_rowhammer_counter;                                                                                       
+  delete[] m_rowhammer_hotrows;                                                                                       
+  delete[] m_rowhammer_hotrows_refresh;
 }
 
 // initialize dram controller
@@ -285,6 +307,9 @@ bool dram_ctrl_c::insert_new_req(mem_req_s* mem_req) {
     rid = addr;
   }
 
+  //++Sahith                                                                                                           
+  //cout<<"Addr: "<<mem_req->m_addr<<" Bid XOR: "<<bid_xor<<" Bank Shift: "<<m_bid_shift<<" Bank Mask: "<<m_bid_mask<<"<<endl;
+          
   ASSERTM(rid >= 0, "addr:0x%llx cid:%llu bid:%llu rid:%llu type:%s\n", addr,
           cid, bid, rid, mem_req_c::mem_req_type_name[mem_req->m_type]);
 
@@ -306,6 +331,52 @@ bool dram_ctrl_c::insert_new_req(mem_req_s* mem_req) {
   insert_req_in_drb(mem_req, bid, rid, cid);
   on_insert(mem_req, bid, rid, cid);
 
+  //////////////////////////////////////////////////////                                                               
+  //++Sahith                                                                                                           
+  map<uint64_t,Counter>::iterator it;        
+  set<Addr>::iterator hot_row_it;                                                                          
+  it = (*m_rowhammer_counter)[bid]->find(rid);                                                                         
+  if(it != (*m_rowhammer_counter)[bid]->end())                                                                         
+  {                                                                                                                    
+    //Mitigation - read the adjacent rows and make the present row value 0   
+    it->second++;
+    STAT_EVENT(RH_MEM_ACCESS);                                          
+    if(it->second % *KNOB(KNOB_RH_THRESHOLD) == 0 && it->second != 0)                                                                         
+    {                                                                                                                                                                                                            
+      cout<<"Row_Hammer_Threshold ###########################################################################   "<<it->second<<endl;
+      STAT_EVENT(RH_TOT_MITIGATION);
+      //Generate a request to the adjacent rows   
+
+      //Check if the row is already present
+      hot_row_it = (*m_rowhammer_hotrows)[bid]->find(rid);
+      if(hot_row_it == (*m_rowhammer_hotrows)[bid]->end())
+      {
+        STAT_EVENT(RH_TOT_HOT_ROWS);
+      }
+      //Hot Row Tracker                                                                                                
+      (*m_rowhammer_hotrows)[bid]->emplace(rid);                                                                       
+      (*m_rowhammer_hotrows_refresh)[bid]->emplace(rid);                                                               
+      m_total_rowhammer_hotrows = 0;                                                                                   
+      for(int rowhammer_bank=0; rowhammer_bank < m_num_bank; rowhammer_bank++)                                         
+      {                                                                                                                
+        m_total_rowhammer_hotrows += (*m_rowhammer_hotrows)[rowhammer_bank]->size();                                   
+      }                                                                                                                
+      //cout<<"Total_Hot_Rows: "<< m_total_rowhammer_hotrows <<endl;                                          
+      //cout<<"Addr: "<<mem_req->m_addr<<" RH: BankID - "<<bid<<" RowID - "<<rid<<" Count - "<<(*m_rowhammer_counter)[bid]->operator[](rid)<<endl;
+      //cout<<"Number of Hot Row: "<<(*m_rowhammer_hotrows)[bid]->size()<<endl;                                        
+      //cout<<"Hot Rows: "<<endl;                                                                                      
+      //for (set<Addr>::iterator it=(*m_rowhammer_hotrows)[bid]->begin(); it!=(*m_rowhammer_hotrows)[bid]->end(); ++it)
+      //  cout << ' ' << *it;                                                                                          
+      //cout<<endl;                                                                                                    
+    }                                                                                                                                                                                                                                    
+  }                                                                                                                    
+  else                                                                                                                 
+    (*m_rowhammer_counter)[bid]->operator[](rid) = 0;                                                                  
+                                                                                                                       
+                                                                                                                       
+  //cout<<"Addr: "<<mem_req->m_addr<<" RH: BankID - "<<bid<<" RowID - "<<rid<<" Count - "<<(*m_rowhammer_counter)[bid]->operator[](rid)<<endl;
+  //////////////////////////////////////////////////////                                                               
+                                          
   STAT_EVENT(TOTAL_DRAM);
 
   ++m_total_req;
@@ -375,6 +446,37 @@ void dram_ctrl_c::run_a_cycle(bool pll_lock) {
   }
   on_run_a_cycle();
 
+  //++Sahith                                                                                                           
+  if(m_cycle%m_rowhammer_refresh == 0 and m_cycle != 0)                                                                
+  {                                                                                                                    
+    //Refresh the Row Conters in every bank                                                                            
+    for (int ii = 0; ii < m_num_bank; ++ii) {                                                                          
+      (*m_rowhammer_counter)[ii]->clear();                                                                             
+    }                                                                                                                  
+    //Calculate the Avg Hot Rows                                                                                       
+    //cout<<"Im HERE 1"<<endl;   
+    STAT_EVENT(RH_REFRESH_INTERVALS);                                                                                      
+    cout<<"Refresh_interval ####################################################################################"<<endl;
+    m_avg_rowhammer_hotrows = (m_num_rowhammer_refresh) * m_avg_rowhammer_hotrows;                                     
+    //cout<<"Initial Values avg_rowhammer_hotrows"                                                                     
+    //cout<<"Im HERE 2"<<endl;                                                                                         
+    for(int ii = 0; ii < m_num_bank; ++ii) {                                                                           
+      for (set<Addr>::iterator it=(*m_rowhammer_hotrows)[ii]->begin(); it!=(*m_rowhammer_hotrows)[ii]->end(); ++it)    
+        cout << ' ' << *it;                                                                                            
+      cout<<endl;                                                                                                      
+                                                                                                                       
+      m_avg_rowhammer_hotrows += (*m_rowhammer_hotrows_refresh)[ii]->size();                                      
+      (*m_rowhammer_hotrows_refresh)[ii]->clear();                                                                     
+    }                                                                                                                  
+    //cout<<"Im HERE 3"<<endl;                                                                                         
+    m_num_rowhammer_refresh++;                                                                                         
+    m_avg_rowhammer_hotrows = m_avg_rowhammer_hotrows / m_num_rowhammer_refresh;                                       
+    cout<<"Avg Num of Hot Rows: "<<m_avg_rowhammer_hotrows<<endl;                                                      
+    cout<<"Total_Hot_Rows: "<< m_total_rowhammer_hotrows <<endl;                                                       
+    //Clear the hot row tracker - m_rowhammer_hotrows_refresh                                                          
+    cout<<"Num Refresh: "<<m_num_rowhammer_refresh<<endl;                                                              
+    cout<<"############################################################################################################"<<endl;
+  }                                               
   ++m_cycle;
 }
 

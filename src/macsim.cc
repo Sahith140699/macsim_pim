@@ -172,7 +172,7 @@ void macsim_c::register_functions(void) {
   mem_factory_c::get()->register_class("l2_decoupled_network", default_mem);
   mem_factory_c::get()->register_class("l2_decoupled_local", default_mem);
   mem_factory_c::get()->register_class("igpu_network", default_mem);
-
+  mem_factory_c::get()->register_class("pim_network", default_mem);
   dram_factory_c::get()->register_class("FCFS", fcfs_controller);
   dram_factory_c::get()->register_class("FRFCFS", frfcfs_controller);
   dram_factory_c::get()->register_class("SIMPLE", simple_controller);
@@ -240,6 +240,7 @@ void macsim_c::init_memory(void) {
       m_simBase->m_knobs->KNOB_DRAM_SCHEDULING_POLICY->getValue(), m_simBase);
     m_dram_controller[ii]->init(ii);
   }
+  //report("Refresh Interval: "<<m_dram_controller[0]->m_rowhammer_refresh<<"\n")
 
 #ifndef USING_SST
   // initialize memory
@@ -1031,6 +1032,9 @@ int macsim_c::run_a_cycle() {
 // =======================================
 void macsim_c::finalize() {
   m_MMU->finalize();
+
+  //++Sahith - Print the values from DRAM
+  
 
   // deallocate memory
   deallocate_memory();

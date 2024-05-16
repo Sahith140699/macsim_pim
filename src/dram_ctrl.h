@@ -38,6 +38,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #define DRAM_CTRL_H
 
 #include <list>
+#include <map>
+#include <set>
 #include <fstream>
 
 #include "macsim.h"
@@ -147,6 +149,8 @@ public:
   static int
     dram_req_priority[DRAM_REQ_PRIORITY_COUNT]; /**< dram request priority */
   static const char* dram_state[DRAM_STATE_COUNT]; /**< dram state string */
+  //++Sahith
+  uint64_t m_rowhammer_refresh; 
 
 protected:
   /**
@@ -258,7 +262,14 @@ protected:
   uint64_t m_bid_shift; /**< bank id shift */
   uint64_t m_rid_shift; /**< row id shift */
   uint64_t m_bid_xor_shift; /**< bank id xor factor */
-
+  //++Sahith                                                                                                           
+    vector<map<uint64_t,Counter>*>* m_rowhammer_counter;                                                               
+    //uint64_t m_rowhammer_refresh;                                                                                      
+    vector<set<Addr>*>* m_rowhammer_hotrows;                                                                           
+    vector<set<Addr>*>* m_rowhammer_hotrows_refresh;                                                                   
+    float m_avg_rowhammer_hotrows;                                                                                     
+    uint64_t m_total_rowhammer_hotrows;                                                                                
+    uint64_t m_num_rowhammer_refresh;
   int
     m_num_completed_in_last_cycle; /**< number of requests completed in last cycle */
   int m_starvation_cycle; /**< number of cycles without completed requests*/
